@@ -2,6 +2,7 @@ package orm
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -142,6 +143,46 @@ func (s *Session) Insert(objects ...interface{}) (int64, error) {
 	return result.RowsAffected()
 }
 
+// support map[field]value or list:field1, value1, field2, value2, ...
+func (s *Session) Update(kv ...interface{}) (int64, error) {
+	m, ok := kv[0].(map[string]interface{})
+	if !ok {
+		m = make(map[string]interface{})
+		for i := 0; i < len(kv); i += 2 {
+			m[kv[i].(string)] = kv[i+1]
+		}
+	}
+	s.clause.Set(UPDATE, s.getRefTable().Name, m)
+	// set WHERE in other func!!!
+	sql, vars := s.clause.Build(UPDATE, WHERE)
+	result, err := s.Raw(sql, vars...).Exec()
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func (s *Session) Delete() (int64, error) {
+	s.clause.Set(DELETE, s.getRefTable().Name)
+	sql, vars := s.clause.Build(DELETE, WHERE)
+	result, err := s.Raw(sql, vars...).Exec()
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func (s *Session) Count() (int64, error) {
+	s.clause.Set(COUNT, s.getRefTable().Name)
+	sql, _ := s.clause.Build(COUNT, WHERE)
+	result := s.Raw(sql).QueryRow()
+	var tmp int64
+	if err := result.Scan(&tmp); err != nil {
+		return 0, err
+	}
+	return tmp, nil
+}
+
 func (s *Session) Find(object interface{}) error {
 	//s.Model((*object)[0])
 	obj := reflect.Indirect(reflect.ValueOf(object))
@@ -149,8 +190,8 @@ func (s *Session) Find(object interface{}) error {
 	s.Model(reflect.New(elemType).Elem().Interface())
 	table := s.getRefTable()
 	s.clause.Set(SELECT, table.Name, table.FieldNames)
-	sql, _ := s.clause.Build(SELECT)
-	results, err := s.Raw(sql).QueryRows()
+	sql, vars := s.clause.Build(SELECT, WHERE, ORDERBY, LIMIT)
+	results, err := s.Raw(sql, vars...).QueryRows()
 	if err != nil {
 		return err
 	}
@@ -167,4 +208,33 @@ func (s *Session) Find(object interface{}) error {
 		obj.Set(reflect.Append(obj, e))
 	}
 	return results.Close()
+}
+
+func (s *Session) Limit(num int) *Session {
+	s.clause.Set(LIMIT, num)
+	return s
+}
+
+func (s *Session) Where(desc string, args ...interface{}) *Session {
+	var vars []interface{}
+	s.clause.Set(WHERE, append(append(vars, desc), args...)...)
+	return s
+}
+
+func (s *Session) OrderBy(desc string) *Session {
+	s.clause.Set(ORDERBY, desc)
+	return s
+}
+
+func (s *Session) First(value interface{}) error {
+	dest := reflect.Indirect(reflect.ValueOf(value))
+	destSlice := reflect.New(reflect.SliceOf(dest.Type())).Elem()
+	if err := s.Limit(1).Find(destSlice.Addr().Interface()); err != nil {
+		return err
+	}
+	if destSlice.Len() == 0 {
+		return errors.New("NOT FOUND")
+	}
+	dest.Set(destSlice.Index(0))
+	return nil
 }

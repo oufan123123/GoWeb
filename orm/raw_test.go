@@ -19,6 +19,7 @@ var (
 	student1 = &Student{Id: 1, Name: "of", Age: 26}
 	student2 = &Student{Id: 2, Name: "dqj", Age: 27}
 	student3 = &Student{Id: 3, Name: "mt", Age: 23}
+	student4 = &Student{Id: 4, Name: "lxy", Age: 26}
 )
 
 func testInitSession(t *testing.T) *Session {
@@ -31,13 +32,13 @@ func testInitSession(t *testing.T) *Session {
 	}
 	s := o.NewSession()
 	s.Model(&Student{})
-	err1 := s.DropTable()
-	err2 := s.CreateTable()
-	_, err3 := s.Insert(student1, student2)
-	if err1 != nil || err2 != nil || err3 != nil {
-		t.Fatal("test TestInit fail")
-		//return
-	}
+	//err1 := s.DropTable()
+	//err2 := s.CreateTable()
+	//_, err3 := s.Insert(student1, student2, student3, student4)
+	//if err1 != nil || err2 != nil || err3 != nil {
+	//t.Fatal("test TestInit fail")
+	//return
+	//}
 	return s
 }
 
@@ -56,4 +57,42 @@ func TestSession_Find(t *testing.T) {
 		t.Fatal("failed to query all")
 	}
 	fmt.Println("sucess")
+}
+
+func TestSession_Limit(t *testing.T) {
+	s := testInitSession(t)
+	var stus []Student
+	if err := s.Limit(1).Find(&stus); err != nil {
+		t.Fatal("failed to find students")
+	}
+	if len(stus) != 1 {
+		t.Fatal("students' len is not 1")
+	}
+}
+
+func TestSession_Update(t *testing.T) {
+	s := testInitSession(t)
+	m := map[string]interface{}{
+		"Name": "qtt",
+		"Age":  16,
+	}
+	var sl []interface{}
+
+	affect, _ := s.Where("id = 3").Update(append(sl, m)...)
+	stu := &Student{}
+	s.OrderBy("Age asc").First(stu)
+
+	if affect != 1 || stu.Age != 16 {
+		t.Fatal("update test fail")
+	}
+}
+
+func TestSession_DeleteAndCount(t *testing.T) {
+	s := testInitSession(t)
+	affect, _ := s.Where("Id = ?", 1).Delete()
+	count, _ := s.Count()
+	if affect != 1 || count != 3 {
+		t.Fatal("test delete and count fail")
+	}
+
 }
